@@ -20,7 +20,11 @@ Control the Chrome Dino game with hand gestures. Three gesture classes. Inferenc
 
 ## System Pipeline
 
-[![System Pipeline](pipeline.svg)](https://ChuoiUhuhu0727.github.io/gesture-edge-ai/pipeline.html)
+> 👆 Click the pipeline image to explore each stage in detail.
+
+<a href="https://ChuoiUhuhu0727.github.io/gesture-edge-ai/pipeline.html">
+  <img src="pipeline.svg" width="220" alt="System Pipeline"/>
+</a>
 
 *Gesture recognition runs in a daemon thread. The game runs in the main thread. They share one variable protected by `threading.Lock()`.*
 

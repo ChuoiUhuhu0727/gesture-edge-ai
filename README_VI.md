@@ -20,7 +20,11 @@
 
 ## Pipeline Hệ Thống
 
-[![System Pipeline](pipeline.svg)](https://ChuoiUhuhu0727.github.io/gesture-edge-ai/pipeline.html)
+> 👆 Click vào hình để khám phá từng bước chi tiết.
+
+<a href="https://ChuoiUhuhu0727.github.io/gesture-edge-ai/pipeline.html">
+  <img src="pipeline.svg" width="220" alt="System Pipeline"/>
+</a>
 
 *Nhận diện cử chỉ chạy trên daemon thread. Game chạy trên main thread. Hai luồng chia sẻ một biến được bảo vệ bởi `threading.Lock()`.*
 
