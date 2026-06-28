@@ -20,6 +20,8 @@
 
 ## Pipeline Hệ Thống
 
+👉 **[Pipeline tương tác — click vào từng ô để hiểu](https://ChuoiUhuhu0727.github.io/gesture-edge-ai/pipeline.html)**
+
 ```mermaid
 flowchart TD
     A["📷 Webcam"] --> B["OpenCV\ncapture · flip · BGR→RGB"]

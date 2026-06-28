@@ -20,6 +20,8 @@ Control the Chrome Dino game with hand gestures. Three gesture classes. Inferenc
 
 ## System Pipeline
 
+👉 **[Interactive Pipeline — click any box to understand it](https://ChuoiUhuhu0727.github.io/gesture-edge-ai/pipeline.html)**
+
 ```mermaid
 flowchart TD
     A["📷 Webcam"] --> B["OpenCV\ncapture · flip · BGR→RGB"]
