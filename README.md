@@ -1,104 +1,95 @@
-# GestureEdge — Real-Time Hand Gesture Control via Edge Inference
+# GestureEdge — Hand Gesture Control on Edge Hardware
 
-Control the Chrome Dino game with hand gestures — 3 gesture classes, 0.038ms inference latency, threaded pipeline decoupled from game rendering.
+[🇻🇳 Tiếng Việt](README_VI.md)
 
-Built on: MediaPipe Tasks → TFLite MLP → GestureBuffer → Chrome Dino game (monkey-patched).
+Control the Chrome Dino game with hand gestures. Three gesture classes. Inference at 0.038ms. Gesture recognition runs in a background thread, independent from the game loop.
 
 ---
 
 ## Demo
 
-<!-- TODO: add demo GIF or video after recording -->
+<!-- TODO: add demo GIF after recording -->
 
 | Gesture | Action |
 |---------|--------|
 | Open hand | Jump |
 | Fist | Duck |
-| Pointer finger | Run (cancel jump/duck) |
+| Pointer finger | Run |
 
 ---
 
 ## System Pipeline
 
-```
-[Webcam]
-   ↓  OpenCV capture + BGR→RGB + flip
-[MediaPipe Tasks — hand_landmarker.task]
-   ↓  21 landmarks (x, y per point)
-[Landmark normalization]
-   ↓  translate to wrist origin → scale by max absolute value → 42-dim vector
-[TFLite MLP — keypoint_classifier.tflite]
-   ↓  3 classes: Open / Fist / Pointer
-[GestureBuffer — sliding window majority vote, N=10]
-   ↓  stable gesture → thread-safe shared state (threading.Lock)
-[Chrome Dino game loop — monkey-patched]
-   ↓  inject Up / Down key per frame
-[Jump / Duck / Run]
+```mermaid
+flowchart TD
+    A["📷 Webcam"] --> B["OpenCV\ncapture · flip · BGR→RGB"]
+    B --> C["MediaPipe Tasks\n21 landmarks"]
+    C --> D["Landmark Normalization\n→ 42-dim vector"]
+    D --> E["TFLite MLP\n42 → 20 → 10 → 4\n1,114 params"]
+    E --> F["GestureBuffer\nmajority vote · N=10\nhold_frames=5"]
+    F --> G["Chrome Dino Loop\nUp / Down key inject"]
+    G --> H["🦕 Jump / Duck / Run"]
+
+    style A fill:#4a9eff,color:#fff,stroke:none
+    style H fill:#2ecc71,color:#fff,stroke:none
 ```
 
-The gesture recognition pipeline runs in a **daemon thread**. The game loop runs in the **main thread**. They share state via `threading.Lock()`.
+*Gesture recognition runs in a daemon thread. The game runs in the main thread. They share one variable protected by `threading.Lock()`.*
 
 ---
 
 ## Engineering Decisions
 
-### 1. Landmark normalization — why not raw pixel coordinates?
+### 1. Landmark normalization
 
-Raw pixel landmarks shift with hand position and camera distance. Each frame is normalized by:
-1. Translating all 21 points relative to landmark 0 (wrist)
-2. Scaling by the maximum absolute value in the flattened 42-dim vector
+Raw pixel coordinates change with hand position and camera distance. I normalize each frame:
+1. Shift all 21 points relative to the wrist (landmark 0)
+2. Scale by the largest absolute value in the 42-dim vector
 
-Result: a position- and scale-invariant feature vector. The MLP generalizes across different hand sizes and camera distances without retraining.
+The MLP then works for any hand size and camera distance without retraining.
 
-### 2. Threading — decouple inference from game rendering
+### 2. Threading
 
-Gesture inference (capture → MediaPipe → MLP → buffer) blocks on I/O and model execution. Running it synchronously in the game loop would stall rendering on slow frames.
+Gesture inference blocks on I/O and model execution. Running it inside the game loop would freeze the game on slow frames.
 
-Solution: daemon thread for inference, main thread for the game. Shared state is one `_gesture_action` variable guarded by a `Lock`. The game loop reads it every frame at zero blocking cost.
+Fix: inference in a daemon thread, game in the main thread. They share one `_gesture_action` variable behind a `Lock`. The game reads it each frame with zero wait.
 
 ### 3. Temporal smoothing — GestureBuffer
 
-Raw per-frame classification is noisy. A single frame with an occluded finger can flip the gesture class and trigger an unintended jump.
+One bad frame (finger partly hidden) can flip the class and trigger a random jump. `GestureBuffer` applies a sliding window majority vote over 10 frames to smooth this out.
 
-`GestureBuffer` (`gesture_dino.py`) applies a **sliding window majority vote** over the last `window` frames. It also holds the last stable gesture for `hold_frames` consecutive misses — so brief detection gaps don't reset the action mid-game.
+It also holds the last stable gesture for 5 frames after detection drops — so brief occlusion doesn't reset the action.
 
 ```
-raw gesture (per frame, or -1 if no hand)
+raw frame result (or -1 = no hand)
       ↓
-GestureBuffer (window=10, hold_frames=5)
-  - majority vote over last 10 frames
-  - hold last stable gesture for 5 miss frames
+GestureBuffer(window=10, hold_frames=5)
       ↓
-stable gesture  →  inject key into game loop
+stable gesture → game key
 ```
 
-Three tunable parameters:
-- `window=10` — larger = smoother output, ~+33ms lag per extra frame at 30fps
-- majority vote threshold — implicit at ≥50% of window
-- `hold_frames=5` — grace period for brief occlusion
+### 4. Why ONNX, not TensorRT
 
-### 4. TensorRT vs ONNX — profiling-driven decision
+I benchmarked both before choosing:
 
-I benchmarked both runtimes on the keypoint classifier before choosing one:
-
-| Runtime | Per-sample latency |
-|---------|--------------------|
+| Runtime | Latency |
+|---------|---------|
 | ONNX CPU | **0.038 ms** |
 | TensorRT GPU | 0.062 ms |
 
-TensorRT was **63% slower** per sample. Root cause: the MLP (42 inputs → 3 outputs) is too small for GPU parallelism to overcome CPU↔GPU memory transfer overhead. TensorRT's latency advantage only materializes with heavier architectures — CNNs on raw frames, for example. For this pipeline, ONNX Runtime on CPU is the correct tool.
+TensorRT was 63% slower. The model has only 1,114 parameters — too small for GPU parallelism to pay off. Memory transfer overhead (CPU↔GPU) is larger than the actual computation. TensorRT wins with heavy models (CNNs, transformers). Not here.
 
-### 5. Glove robustness — observed problem, hypothesis, scope decision
+### 5. Glove robustness
 
-Testing with thick gloves produced intermittent detection: landmarks present one frame, gone the next, causing uncontrolled jumps in-game.
+Thick gloves caused intermittent detection — landmarks appeared and disappeared randomly, making the dino jump uncontrollably.
 
-**Hypothesis (not confirmed via experiment):** distribution shift. MediaPipe's palm detector was trained on bare hands. Thick gloves alter the hand silhouette and occlude the joint features the model relies on for localization.
+**Hypothesis:** MediaPipe was trained on bare hands. Gloves change the hand's silhouette and hide the joint creases the detector relies on.
 
-Two partial mitigations applied:
-- `min_hand_detection_confidence=0.4` (lowered from default 0.5)
-- `hold_frames=5` in `GestureBuffer` to survive brief detection gaps
+What I applied:
+- Lowered `min_hand_detection_confidence` to 0.4 (from default 0.5)
+- `hold_frames=5` in GestureBuffer to survive brief detection gaps
 
-This improved stability but did not fully solve thick-glove intermittency. A complete fix would require retraining the palm detector on gloved-hand data or switching to a domain-adapted model — outside the project scope.
+This improved stability but did not fully fix it. A complete fix requires retraining the palm detector on gloved-hand data — outside this project's scope.
 
 ---
 
@@ -106,25 +97,25 @@ This improved stability but did not fully solve thick-glove intermittency. A com
 
 | Metric | Value |
 |--------|-------|
-| Inference latency (ONNX CPU, median) | 0.038 ms |
-| Inference latency (TensorRT GPU, median) | 0.062 ms |
-| Gesture classes | 3 active (4 trained, 97.2% accuracy) |
+| ONNX CPU latency | 0.038 ms |
+| TensorRT GPU latency | 0.062 ms |
+| Gesture classes | 3 active / 4 trained |
+| Classifier accuracy | 97.2% |
 | Smoothing window | 10 frames |
-| Hold frames on miss | 5 frames |
+| Hold on miss | 5 frames |
 
 ---
 
-## Tech Stack
+## Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Hand landmark detection | MediaPipe Tasks |
-| Gesture classifier | TFLite MLP (42 → 20 → 10 → 4, 1,114 params) |
-| Camera capture + overlay | OpenCV |
-| Concurrency | Python `threading` |
-| Runtime (final) | ONNX Runtime (CPU) |
-| Runtime (benchmarked) | TensorRT (GPU) |
-| Game integration | Chrome Dino Runner (monkey-patched) |
+| Layer | Tech |
+|-------|------|
+| Hand detection | MediaPipe Tasks |
+| Classifier | TFLite MLP (42→20→10→4, 1,114 params) |
+| Camera | OpenCV |
+| Threading | Python `threading` |
+| Runtime | ONNX Runtime (CPU) |
+| Game | Chrome Dino Runner (monkey-patched) |
 
 ---
 
@@ -134,24 +125,23 @@ This improved stability but did not fully solve thick-glove intermittency. A com
 pip install mediapipe opencv-python numpy
 ```
 
-Clone the Chrome Dino Runner as an external dependency into the project root:
+Clone Chrome Dino Runner (external dependency):
 
 ```bash
-# The folder must be named Chrome-Dino-Runner-master
 git clone https://github.com/dhhruv/Chrome-Dino-Runner.git Chrome-Dino-Runner-master
 ```
 
-Run the gesture-controlled game:
+Run:
 
 ```bash
 python gesture_dino.py
 ```
 
-Keyboard controls still work: `Up` / `Space` = jump, `Down` = duck, `p` = pause, `ESC` = close camera.
+Keys still work: `Up`/`Space` = jump, `Down` = duck, `p` = pause, `ESC` = close camera.
 
 ---
 
 ## Credits
 
-- Hand gesture recognition base: [Kazuhito00/hand-gesture-recognition-using-mediapipe](https://github.com/Kazuhito00/hand-gesture-recognition-using-mediapipe) (translated by [kinivi](https://github.com/kinivi))
-- Chrome Dino game: Chrome-Dino-Runner (external dependency, not included in this repo)
+- Gesture recognition base: [Kazuhito00](https://github.com/Kazuhito00/hand-gesture-recognition-using-mediapipe) (translated by [kinivi](https://github.com/kinivi))
+- Game: [dhhruv/Chrome-Dino-Runner](https://github.com/dhhruv/Chrome-Dino-Runner)
