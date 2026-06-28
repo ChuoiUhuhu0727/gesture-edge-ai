@@ -20,21 +20,7 @@
 
 ## Pipeline Hệ Thống
 
-👉 **[Pipeline tương tác — click vào từng ô để hiểu](https://ChuoiUhuhu0727.github.io/gesture-edge-ai/pipeline.html)**
-
-```mermaid
-flowchart TD
-    A["📷 Webcam"] --> B["OpenCV\ncapture · flip · BGR→RGB"]
-    B --> C["MediaPipe Tasks\n21 landmarks"]
-    C --> D["Chuẩn hóa landmark\n→ vector 42 chiều"]
-    D --> E["TFLite MLP\n42 → 20 → 10 → 4\n1,114 params"]
-    E --> F["GestureBuffer\nbình bầu đa số · N=10\nhold_frames=5"]
-    F --> G["Chrome Dino Loop\nInject phím Up / Down"]
-    G --> H["🦕 Nhảy / Cúi / Chạy"]
-
-    style A fill:#4a9eff,color:#fff,stroke:none
-    style H fill:#2ecc71,color:#fff,stroke:none
-```
+[![System Pipeline](pipeline.svg)](https://ChuoiUhuhu0727.github.io/gesture-edge-ai/pipeline.html)
 
 *Nhận diện cử chỉ chạy trên daemon thread. Game chạy trên main thread. Hai luồng chia sẻ một biến được bảo vệ bởi `threading.Lock()`.*
 

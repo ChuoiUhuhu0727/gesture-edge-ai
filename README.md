@@ -20,21 +20,7 @@ Control the Chrome Dino game with hand gestures. Three gesture classes. Inferenc
 
 ## System Pipeline
 
-👉 **[Interactive Pipeline — click any box to understand it](https://ChuoiUhuhu0727.github.io/gesture-edge-ai/pipeline.html)**
-
-```mermaid
-flowchart TD
-    A["📷 Webcam"] --> B["OpenCV\ncapture · flip · BGR→RGB"]
-    B --> C["MediaPipe Tasks\n21 landmarks"]
-    C --> D["Landmark Normalization\n→ 42-dim vector"]
-    D --> E["TFLite MLP\n42 → 20 → 10 → 4\n1,114 params"]
-    E --> F["GestureBuffer\nmajority vote · N=10\nhold_frames=5"]
-    F --> G["Chrome Dino Loop\nUp / Down key inject"]
-    G --> H["🦕 Jump / Duck / Run"]
-
-    style A fill:#4a9eff,color:#fff,stroke:none
-    style H fill:#2ecc71,color:#fff,stroke:none
-```
+[![System Pipeline](pipeline.svg)](https://ChuoiUhuhu0727.github.io/gesture-edge-ai/pipeline.html)
 
 *Gesture recognition runs in a daemon thread. The game runs in the main thread. They share one variable protected by `threading.Lock()`.*
 
